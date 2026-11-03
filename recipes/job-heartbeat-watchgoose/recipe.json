@@ -1,0 +1,11 @@
+{
+  "id": "job-heartbeat-watchgoose",
+  "title": "Monitor a scheduled job with Watchgoose",
+  "summary": "Run a command and send start, success and failure pings to a Watchgoose check, which alerts when a run fails or never happens.",
+  "category": "monitoring-alerting",
+  "tags": ["heartbeat", "cron", "watchgoose", "monitoring"],
+  "author": "bartekrutkowski",
+  "minDaguVersion": "2.13.0",
+  "platforms": ["linux", "macos", "windows"],
+  "prerequisites": ["A Watchgoose check", "Its UUID or ping key and slug exposed through an environment-backed Dagu secret"]
+}

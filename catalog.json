@@ -164,6 +164,33 @@
       "sourceUrl": "https://github.com/dagucloud/recipes/tree/main/recipes/http-health-slack"
     },
     {
+      "id": "job-heartbeat-watchgoose",
+      "title": "Monitor a scheduled job with Watchgoose",
+      "summary": "Run a command and send start, success and failure pings to a Watchgoose check, which alerts when a run fails or never happens.",
+      "category": "monitoring-alerting",
+      "tags": [
+        "heartbeat",
+        "cron",
+        "watchgoose",
+        "monitoring"
+      ],
+      "author": "bartekrutkowski",
+      "minDaguVersion": "2.13.0",
+      "platforms": [
+        "linux",
+        "macos",
+        "windows"
+      ],
+      "prerequisites": [
+        "A Watchgoose check",
+        "Its UUID or ping key and slug exposed through an environment-backed Dagu secret"
+      ],
+      "validatedWith": "2.13.0",
+      "workflow": "description: Run a scheduled job and report start, success and failure to a Watchgoose check.\nschedule: \"0 3 * * *\"\n\nparams:\n  - name: command\n    default: /usr/local/bin/backup.sh\n    description: Command to run. Scheduled runs use this default, so set it to your job.\n\n# Report every failed run right away. With DAG-level retries (the base.yaml\n# default), the failure handler and its fail ping wait for the last retry.\nretry_policy:\n  limit: 0\n\n# The part of the check's ping URL after https://watchgoose.com/ping/:\n# the check UUID, or <ping-key>/<slug>.\nsecrets:\n  - name: WATCHGOOSE_CHECK\n    provider: env\n    key: WATCHGOOSE_CHECK\n\nhandler_on:\n  success:\n    action: http.request\n    with:\n      method: POST\n      url: https://watchgoose.com/ping/${env.WATCHGOOSE_CHECK}\n      body: \"${context.dag.name} run ${context.run.id} ended with status ${context.run.status}.\"\n      timeout: 10\n      silent: true\n  failure:\n    action: http.request\n    with:\n      method: POST\n      url: https://watchgoose.com/ping/${env.WATCHGOOSE_CHECK}/fail\n      body: \"${context.dag.name} run ${context.run.id} ended with status ${context.run.status}. Log: ${context.paths.log_file}\"\n      timeout: 10\n      silent: true\n\nsteps:\n  # A step, not an init handler: a failed init handler aborts the run, so an\n  # unreachable monitor would stop the job itself.\n  - id: ping_start\n    action: http.request\n    with:\n      method: POST\n      url: https://watchgoose.com/ping/${env.WATCHGOOSE_CHECK}/start\n      timeout: 10\n      silent: true\n    continue_on:\n      failure: true\n      mark_success: true\n\n  - id: job\n    depends: [ping_start]\n    run: ${params.command}\n",
+      "readme": "# Monitor a scheduled job with Watchgoose\n\nRuns a command on a schedule and reports each run to a [Watchgoose](https://watchgoose.com) check. Watchgoose alerts you when a run fails, and also when a run never starts, for example because the Dagu host is down.\n\nEach run sends two pings, `/start` and then either a success ping or `/fail`:\n\n- `/start` before the command runs, so Watchgoose can measure run time.\n- A success ping when the run succeeds.\n- `/fail` when the run fails. The body names the run ID, status and log file path.\n\n## Prerequisites\n\n- Dagu 2.13.0 or newer.\n- A Watchgoose check with a schedule and grace time that match the workflow's `schedule`.\n\n## Inputs and secrets\n\nSet `WATCHGOOSE_CHECK` in the Dagu process environment to the part of the check's ping URL after `https://watchgoose.com/ping/`:\n\n- `<uuid>` for a UUID ping URL.\n- `<ping-key>/<slug>` for a slug ping URL.\n\nThe workflow reads it as a Dagu secret, so it is masked in logs. Set the default of the `command` param to the job to run (scheduled runs use the default), and change `schedule` to match the check.\n\n## What it changes\n\nRuns `command` and sends up to two HTTPS requests per run to watchgoose.com. Nothing else.\n\n`retry_policy.limit: 0` turns off DAG-level automatic retries for this workflow, so a failed run is reported at once. If you remove it and your `base.yaml` enables DAG retries, Dagu skips the failure handler until the last retry, so the fail ping comes later, and runs started with `dagu start` outside the scheduler never send it.\n\nIf Watchgoose cannot be reached, the start ping is ignored and the command still runs. A failed success or fail ping marks the run as failed in Dagu.\n\n## Verify\n\nRun once with a command that succeeds, then with one that fails:\n\n```sh\ndagu start workflow.yaml -- command=\"echo ok\"\ndagu start workflow.yaml -- command=\"false\"\n```\n\nThe check's event log in Watchgoose shows a start and a success ping, then a start and a failure ping.\n\n## Recovery\n\nFix the command and rerun the workflow. The next success ping marks the check as up again.\n",
+      "sourceUrl": "https://github.com/dagucloud/recipes/tree/main/recipes/job-heartbeat-watchgoose"
+    },
+    {
       "id": "kubernetes-scheduled-job",
       "title": "Run a scheduled Kubernetes Job",
       "summary": "Replace a simple Kubernetes CronJob with a Dagu schedule and a version-pinned Job image.",

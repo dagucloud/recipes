@@ -1,0 +1,55 @@
+description: Run a scheduled job and report start, success and failure to a Watchgoose check.
+schedule: "0 3 * * *"
+
+params:
+  - name: command
+    default: /usr/local/bin/backup.sh
+    description: Command to run. Scheduled runs use this default, so set it to your job.
+
+# Report every failed run right away. With DAG-level retries (the base.yaml
+# default), the failure handler and its fail ping wait for the last retry.
+retry_policy:
+  limit: 0
+
+# The part of the check's ping URL after https://watchgoose.com/ping/:
+# the check UUID, or <ping-key>/<slug>.
+secrets:
+  - name: WATCHGOOSE_CHECK
+    provider: env
+    key: WATCHGOOSE_CHECK
+
+handler_on:
+  success:
+    action: http.request
+    with:
+      method: POST
+      url: https://watchgoose.com/ping/${env.WATCHGOOSE_CHECK}
+      body: "${context.dag.name} run ${context.run.id} ended with status ${context.run.status}."
+      timeout: 10
+      silent: true
+  failure:
+    action: http.request
+    with:
+      method: POST
+      url: https://watchgoose.com/ping/${env.WATCHGOOSE_CHECK}/fail
+      body: "${context.dag.name} run ${context.run.id} ended with status ${context.run.status}. Log: ${context.paths.log_file}"
+      timeout: 10
+      silent: true
+
+steps:
+  # A step, not an init handler: a failed init handler aborts the run, so an
+  # unreachable monitor would stop the job itself.
+  - id: ping_start
+    action: http.request
+    with:
+      method: POST
+      url: https://watchgoose.com/ping/${env.WATCHGOOSE_CHECK}/start
+      timeout: 10
+      silent: true
+    continue_on:
+      failure: true
+      mark_success: true
+
+  - id: job
+    depends: [ping_start]
+    run: ${params.command}
